@@ -1,0 +1,17 @@
+version: '2'
+services:
+  frontend:
+    image: registry.local.tld:5000/frontend:develop
+    environment:
+      - VUE_APP_BACKEND_API_URI=http://backend-svc:8090
+      - VUE_APP_BACKEND_SOCKET_URI=ws://backend-svc:8090
+      - VUE_APP_END_DATE_OHLC=1400000000000
+      - VUE_APP_TITLE=XXX
+      - VUE_APP_DEV_MODE=true
+    ports:
+      - "80:80"
+    networks:
+      - frontend
+networks:
+  frontend:
+    driver: bridge

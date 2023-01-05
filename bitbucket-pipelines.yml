@@ -1,0 +1,40 @@
+image: node:10.15
+pipelines:
+  branches:
+    develop:
+      - step:
+          services:
+            - docker
+          script:
+            - mkdir -p dist
+            - npm install
+            - npm run build
+            - echo ${BITBUCKET_COMMIT} > build.txt
+            - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD https://$DOCKER_HUB_URI
+            - docker build -t $DOCKER_HUB_URI/$BITBUCKET_REPO_SLUG:$BITBUCKET_BRANCH .
+            - docker build -t $DOCKER_HUB_URI/$BITBUCKET_REPO_SLUG:${BITBUCKET_COMMIT} .
+            - docker push $DOCKER_HUB_URI/$BITBUCKET_REPO_SLUG:$BITBUCKET_BRANCH
+            - docker push $DOCKER_HUB_URI/$BITBUCKET_REPO_SLUG:${BITBUCKET_COMMIT}
+      - step:
+          name: Deploy to Kubernetes
+          deployment: stage-develop
+          image: xxxnotexist/kubernetes-bitbucket-pipeline
+          script:
+            - echo "$K8S_SERVER_IP $K8S_SERVER_URL" >> /etc/hosts
+            - echo $K8S_CA | tr ' ' '\n' | base64 -d > $(pwd)/ca.crt
+            - kubectl config set-cluster kubernetes --certificate-authority=./ca.crt --server=https://$K8S_SERVER_URL:$K8S_SERVER_PORT
+            - kubectl config set-credentials $K8S_USERNAME --token=$K8S_USER_TOKEN
+            - kubectl config set-context kubernetes --cluster=kubernetes --namespace=$K8S_NAMESPACE --user=$K8S_USERNAME
+            - kubectl config use-context kubernetes --user=$K8S_USERNAME
+            - kubectl get deployments
+            - kubectl set image deployment/$K8S_DEPLOYMENT_NAME $K8S_DEPLOYMENT_NAME=$DOCKER_HUB_URI/$BITBUCKET_REPO_SLUG:${BITBUCKET_COMMIT} -n $K8S_NAMESPACE --record=true
+         
+
+options:
+  docker: true
+  size: 2x
+
+definitions:
+  services:
+    docker:
+      memory: 4096

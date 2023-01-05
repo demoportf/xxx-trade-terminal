@@ -1,0 +1,115 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-configmap
+  namespace: develop-local-com
+data:
+  VUE_APP_BACKEND_API_URI: 'http://backend-svc:8090'
+  VUE_APP_BACKEND_SOCKET_URI: 'ws://backend-svc:8090'
+  VUE_APP_END_DATE_OHLC: '1000000000000'
+  VUE_APP_TITLE: 'XXX'
+  VUE_APP_DEV_MODE: 'false'
+  default.conf: |
+    server {
+    listen       80;
+    server_name  localhost;
+
+          location / {
+              root   /usr/share/nginx/html;
+              try_files $uri /index.html;
+          }
+
+
+          error_page   500 502 503 504  /50x.html;
+          location = /50x.html {
+              root   /usr/share/nginx/html;
+          }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: develop-local-com
+  name: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+      branch: develop
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: frontend
+        branch: develop
+    spec:
+      containers:
+      - image: registry.local.tld/frontend:develop
+        name: frontend
+        restartPolicy: 
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: "0.100"
+            memory: "400Mi"
+          requests:
+            cpu: "0.010"
+            memory: "200Mi"
+        env:
+         - name: VUE_APP_BACKEND_API_URI
+           valueFrom:
+             configMapKeyRef:
+               name: frontend-configmap
+               key: VUE_APP_BACKEND_API_URI
+         - name: VUE_APP_BACKEND_SOCKET_URI
+           valueFrom:
+             configMapKeyRef:
+               name: frontend-configmap
+               key: VUE_APP_BACKEND_SOCKET_URI
+         - name: VUE_APP_END_DATE_OHLC
+           valueFrom:
+             configMapKeyRef:
+               name: frontend-configmap
+               key: VUE_APP_END_DATE_OHLC
+        ports:
+        - containerPort: 80
+          name: frontend
+        volumeMounts:
+          - name: etcdcerts-configmap
+            mountPath: /certs
+          - name: frontend-configmap
+            mountPath: /etc/nginx/conf.d/default.conf
+            readOnly: true
+            subPath: default.conf
+      volumes:
+      - name: etcdcerts-configmap
+        configMap:
+          name: etcdcerts-config
+      - name: frontend-configmap
+        configMap:
+          name: frontend-configmap
+          items:
+          - key: default.conf
+            path: default.conf
+      imagePullSecrets:
+      - name: registrylocaltld
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: develop-local-com
+  name: frontend-svc
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  ports:
+  - name: frontend
+    protocol: TCP
+    port: 4000
+    targetPort: 80
+  selector:
+    app: frontend
+    branch: frontend
